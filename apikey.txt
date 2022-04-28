@@ -1,0 +1,3 @@
+Ednpoint: https://api.alpaca.markets
+api key: AK5FZV3WGINH8MOQ0673
+secret key: VjmYMYfSPmX5F6emp3S945ysn5pUFsAPP2zQq9xC
