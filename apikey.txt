@@ -1,3 +1,3 @@
-Ednpoint: https://api.alpaca.markets
+Endpoint: https://api.alpaca.markets
 api key: [Enter your API key here]
 secret key: [Enter your secret key here]
