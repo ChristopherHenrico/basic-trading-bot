@@ -1,109 +1,180 @@
+# Imports
+import time
+import polygon
 import alpaca_trade_api as tradepi
 import numpy as np
-import time
 
+# API keys for accessing the Alpaca API
+SEC_KEY = "Your Secret Key Here"
+PUB_KEY = "Your Public Key Here"
 
-SEC_KEY = "" # Enter secret key here!
-PUB_KEY = "" # Enter public key here!
-BASE_URL = "https://paper-api.alpaca.markets" # Base url for paper trading!
+# Base URL for the Alpaca API (paper trading)
+BASE_URL = "https://paper-api.alpaca.markets" # Remove this url when trading with real money.
 
-# For real trading don't enter the base url!
-api = tradepi.REST(key_id = PUB_KEY, secret_key = SEC_KEY, base_url = BASE_URL)
+class App:
+  
+  def __init__(self):
+        # Initialize the API client using the API keys and base URL
+        self.api = tradepi.REST(key_id=PUB_KEY, secret_key=SEC_KEY, base_url=BASE_URL)
 
-# Buy a stock
-api.submit_order(
+        # Initialize a variable to track whether a position is held
+        self.pos_held = False
+
+  def buy(self, symbol, qty):
+      # Submit a market order to buy the specified quantity of the given symbol
+      self.api.submit_order(
+          symbol=symbol,
+          qty=qty,
+          side="buy",
+          type="market",
+          time_in_force="gtc"
+      )
+      # Update the position held variable
+      self.pos_held = True
     
-    symbol = "GOOG", # Replace with ticker of stock you want to buy e.g. GOOG,BTCUSD
-    qty = 1, # Amount
-    side = "buy",
-    type = "market",
-    time_in_force = "gtc" # gtc = Good till Cancelled
-    
+  def sell(self, symbol, qty):
+    # Submit a market order to sell the specified quantity of the given symbol
+    self.api.submit_order(
+        symbol=symbol,
+        qty=qty,
+        side="sell",
+        type="market",
+        time_in_force="gtc"
     )
+    # Update the position held variable
+    self.pos_held = False
+    
+  def check_price(self, symbol):
+    # Create a Polygon client using the Alpaca API keys
+    polygon_client = polygon.Client(api_key=PUB_KEY, secret_key=SEC_KEY)
 
-# Sell a stock
+    # Retrieve the bar data for the given symbol
+    barset = polygon_client.barset(symbol, "minute", limit=5)
+    bar_data = barset[symbol]
 
-api.submit_order(
-    
-    symbol = "GOOG", # Replace with ticker of stock you want to buy e.g. GOOG,BTCUSD
-    qty = 1, # Amount
-    side = "sell",
-    type = "market",
-    time_in_force = "gtc" # gtc = Good till Cancelled
-    
-    )
+    # Extract the closing prices from the bar data
+    close_list = [bar.c for bar in bar_data]
 
+    # Convert the closing prices to a numpy array and compute the mean
+    close_list = np.array(close_list, dtype=np.float64)
+    ma = np.mean(close_list)
 
-# Read market data
+    # Get the last closing price
+    last_price = close_list[4]
 
-symb = "GOOG"
-pos_held = False
-
-while True:
-    print("")
-    print("Checking Market Price")
-    
-    
-    market_data = api.getbarset(symb, "minute", limit = 5) # Get one bar object of past 5 minutes
-    
-    close_list = [] # This array will store all the closing prices of bar's time interval
-    for bar in market_data[symb]:
-        close_list.append(bar.c) # bar.c is the closing price of bar's time interval
-    
-    close_list = np.array(close_list, dtype = np.float64) #Convert to numpy array
-    ma = np.mean(close_list) # ma = Market average
-    
-    last_price = close_list[4] # Most recent closing price
-    
+    # Print the moving average and last closing price
     print("Moving Average: " + str(ma))
     print("Last Price: " + str(last_price))
-    
-    
-    # Trading Strategy
 
-    if ma + 1.0 < last_price and not pos_held: # If ma is more than 10cents under price and 
-                                               # haven't been bought
+def auto_trade(api, symbol, qty):
+    # Get the current price of the stock
+    price = api.get_last_trade(symbol).price
+
+    # Set the target sell price to be 10% higher than the current price
+    target_sell_price = price * 1.1
+
+    # Set the stop loss price to be 10% lower than the current price
+    stop_loss_price = price * 0.9
+
+    # Submit a market order to buy the specified quantity of the given symbol
+    api.submit_order(
+        symbol=symbol,
+        qty=qty,
+        side="buy",
+        type="market",
+        time_in_force="gtc"
+    )
+
+    # Set a flag to track whether the stop loss has been triggered
+    stop_loss_triggered = False
+
+    # Run an infinite loop to check the price of the stock every 5 seconds
+    while True:
+        # Get the current price of the stock
+        current_price = api.get_last_trade(symbol).price
+
+        # Check if the stop loss has been triggered
+        if current_price <= stop_loss_price:
+            # Sell the stock if the stop loss has been triggered
+            api.submit_order(
+                symbol=symbol,
+                qty=qty,
+                side="sell",
+                type="market",
+                time_in_force="gtc"
+            )
+            stop_loss_triggered = True
+            break
+
+        # Check if the target sell price has been reached
+        if current_price >= target_sell_price:
+            # Sell the stock if the target sell price has been reached
+            api.submit_order(
+                symbol=symbol,
+                qty=qty,
+                side="sell",
+                type="market",
+                time_in_force="gtc"
+            )
+            break
+
+        # Sleep for 5 seconds before checking the price again
+        time.sleep(5)
+
+    # Print a message indicating whether the stop loss was triggered
+    if stop_loss_triggered:
+        print("Stop loss triggered")
+    else:
+        print("Target sell price reached")
+
+def main():
+    # Create an instance of the App class
+    app = App()
+
+    # Run an infinite loop to accept user commands
+    while True:
+        print("Enter a command:")
+        print("'buy' to buy a stock")
+        print("'sell' to sell a stock")
+        print("'check' to check the price of a stock")
+        print("'auto' to automatically trade a stock")
+        print("'exit' to exit the program")
+
+        # Get the user's command
+        command = input()
+
+        # Process the command
+        if command == "buy":
+            print("Enter the ticker symbol of the stock you want to buy:")
+            symbol = input()
+            print("Enter the quantity of stock you want to buy:")
+            qty = int(input())
+            app.buy(symbol, qty)
         
-        print("Buy")
+        elif command == "sell":
+            print("Enter the ticker symbol of the stock you want to sell:")
+            symbol = input()
+            print("Enter the quantity of stock you want to sell:")
+            qty = int(input())
+            app.sell(symbol, qty)
         
-        api.submit_order(
-            
-            symbol = "GOOG", # Replace with ticker of stock you want to buy e.g. GOOG,BTCUSD
-            qty = 1, # Amount
-            side = "buy",
-            type = "market",
-            time_in_force = "gtc" # gtc = Good till Cancelled
-            
-        )
-        pos_held = True
+        elif command == "check":
+            print("Enter the ticker symbol of the stock you want to check:")
+            symbol = input()
+            app.check_price(symbol)
         
-    elif ma - 1.0 > last_price and pos_held: # If ma is more than 10cents under price and 
-                                               # haven't been bought
+        elif command == "auto":
+            print("Enter the ticker symbol of the stock you want to trade:")
+            symbol = input()
+            print("Enter the quantity of stock you want to trade:")
+            qty = int(input())
+            auto_trade(app.api, symbol, qty)
         
-        print("Sell")
-        
-        api.submit_order(
-            
-            symbol = "GOOG", # Replace with ticker of stock you want to buy e.g. GOOG,BTCUSD
-            qty = 1, # Amount
-            side = "sell",
-            type = "market",
-            time_in_force = "gtc" # gtc = Good till Cancelled
-            
-        )
-        pos_held = False
+        elif command == "exit":
+            break
+        else:
+            print("Invalid command. Please try again.")
 
-        time.sleep(60) # Wait one minute before retrieving more market data
-    
-
-
-    
-    
-    
-    
-    
-    
-
-
-
+if __name__ == "__main__":
+    main()
 
